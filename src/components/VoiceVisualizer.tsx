@@ -177,6 +177,10 @@ const VoiceVisualizer = forwardRef<Ref, VoiceVisualizerProps>(
     useEffect(() => {
       onResize();
 
+      setTimeout(onResize, 100);
+      setTimeout(onResize, 500);
+      setTimeout(onResize, 1000);
+
       const handleResize = () => {
         if (currentScreenWidth.current === window.innerWidth) return;
 
