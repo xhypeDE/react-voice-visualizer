@@ -115,7 +115,37 @@ export interface useVoiceVisualizerParams {
   onPausedAudioPlayback?: () => void;
   onResumedAudioPlayback?: () => void;
   onErrorPlayingAudio?: (error: Error) => void;
+  /**
+   * The options passed to the HTML MediaRecorder API.
+   **/
+  mediaRecorderOptions?: MediaRecorderOptions;
+  /**
+   * Takes a {@link https://developer.mozilla.org/en-US/docs/Web/API/MediaTrackSettings#instance_properties_of_audio_tracks subset} of
+   * `MediaTrackConstraints` that apply to the audio track
+   *
+   * @Property `deviceId`
+   * @Property `groupId`
+   * @Property `autoGainControl`
+   * @Property `channelCount`
+   * @Property `echoCancellation`
+   * @Property `noiseSuppression`
+   * @Property `sampleRate`
+   * @Property `sampleSize`
+   */
+  audioTrackConstraints?: MediaAudioTrackConstraints;
 }
+
+export type MediaAudioTrackConstraints = Pick<
+  MediaTrackConstraints,
+  | "deviceId"
+  | "groupId"
+  | "autoGainControl"
+  | "channelCount"
+  | "echoCancellation"
+  | "noiseSuppression"
+  | "sampleRate"
+  | "sampleSize"
+>;
 
 export interface UseWebWorkerParams<T> {
   fn: AnyFunction;

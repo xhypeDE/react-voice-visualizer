@@ -19,6 +19,8 @@ function useVoiceVisualizer({
   onPausedAudioPlayback,
   onResumedAudioPlayback,
   onErrorPlayingAudio,
+  mediaRecorderOptions,
+  audioTrackConstraints,
 }: useVoiceVisualizerParams = {}): Controls {
   const [isRecordingInProgress, setIsRecordingInProgress] = useState(false);
   const [isPausedRecording, setIsPausedRecording] = useState(false);
@@ -136,7 +138,7 @@ function useVoiceVisualizer({
     setIsProcessingStartRecording(true);
 
     navigator.mediaDevices
-      .getUserMedia({ audio: true })
+      .getUserMedia({ audio: audioTrackConstraints ?? true })
       .then((stream) => {
         setIsCleared(false);
         setIsProcessingStartRecording(false);
@@ -151,7 +153,10 @@ function useVoiceVisualizer({
         sourceRef.current =
           audioContextRef.current.createMediaStreamSource(stream);
         sourceRef.current.connect(analyserRef.current);
-        mediaRecorderRef.current = new MediaRecorder(stream);
+        mediaRecorderRef.current = new MediaRecorder(
+          stream,
+          mediaRecorderOptions
+        );
         mediaRecorderRef.current.addEventListener(
           "dataavailable",
           handleDataAvailable,
