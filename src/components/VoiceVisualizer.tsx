@@ -66,7 +66,6 @@ interface VoiceVisualizerProps {
   progressIndicatorTimeOnHoverClassName?: string;
   isAudioProcessingTextShown?: boolean;
   controlButtonsClassName?: string;
-  controlButtonsClassName?: string;
   clearButtonText?: string;
   processingAudioText?: string;
   downloadAudioText?: string;
