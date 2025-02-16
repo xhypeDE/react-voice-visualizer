@@ -5,7 +5,6 @@ import React, {
   forwardRef,
   useRef,
   MutableRefObject,
-  MouseEvent,
   MouseEventHandler,
 } from "react";
 
@@ -19,7 +18,7 @@ import {
 } from "../helpers";
 import { useWebWorker } from "../hooks/useWebWorker.tsx";
 import { useDebounce } from "../hooks/useDebounce.tsx";
-import { useLatest } from "../hooks/useLatest.tsx";
+// Removed unused import "useLatest"
 import {
   BarsData,
   Controls,
@@ -140,7 +139,7 @@ const VoiceVisualizer = forwardRef<HTMLAudioElement | null, VoiceVisualizerProps
     },
     ref,
   ) => {
-    // Use the forwarded ref if provided, otherwise fall back to the audioRef passed in controls.
+    // Use the forwarded ref if provided, otherwise fall back to controls.audioRef.
     const audioElementRef = (ref as MutableRefObject<HTMLAudioElement | null>) || controlsAudioRef;
 
     const [hoveredOffsetX, setHoveredOffsetX] = useState(0);
@@ -257,7 +256,6 @@ const VoiceVisualizer = forwardRef<HTMLAudioElement | null, VoiceVisualizerProps
       secondaryBarColor,
       rounded,
       fullscreen,
-      isDefaultUIShown,
       canvasWidth,
     ]);
 
@@ -303,8 +301,12 @@ const VoiceVisualizer = forwardRef<HTMLAudioElement | null, VoiceVisualizerProps
         gap: formattedGap,
       });
 
-      canvasRef.current?.addEventListener("mousemove", setCurrentHoveredOffsetX);
+      // Use the native MouseEvent for the listener.
+      const setCurrentHoveredOffsetX = (e: globalThis.MouseEvent) => {
+        setHoveredOffsetX(e.offsetX);
+      };
 
+      canvasRef.current?.addEventListener("mousemove", setCurrentHoveredOffsetX);
       return () => {
         canvasRef.current?.removeEventListener("mousemove", setCurrentHoveredOffsetX);
       };
@@ -392,16 +394,13 @@ const VoiceVisualizer = forwardRef<HTMLAudioElement | null, VoiceVisualizerProps
       setIsRecordedCanvasHovered(false);
     };
 
-    const setCurrentHoveredOffsetX = (e: MouseEvent) => {
-      setHoveredOffsetX(e.offsetX);
-    };
-
     const handleRecordedAudioCurrentTime: MouseEventHandler<HTMLCanvasElement> = (e) => {
+      // Extract the native event to access properties like clientX.
+      const nativeEvent = e.nativeEvent as globalThis.MouseEvent;
       if (audioElementRef?.current && canvasRef.current) {
         const newCurrentTime =
           (duration / canvasCurrentWidth) *
-          (e.clientX - canvasRef.current.getBoundingClientRect().left);
-
+          (nativeEvent.clientX - canvasRef.current.getBoundingClientRect().left);
         audioElementRef.current.currentTime = newCurrentTime;
         setCurrentAudioTime(newCurrentTime);
       }
@@ -447,9 +446,7 @@ const VoiceVisualizer = forwardRef<HTMLAudioElement | null, VoiceVisualizerProps
           )}
           {isAudioProcessingTextShown && isProcessingRecordedAudio && (
             <p
-              className={`voice-visualizer__canvas-audio-processing ${
-                audioProcessingTextClassName ?? ""
-              }`}
+              className={`voice-visualizer__canvas-audio-processing ${audioProcessingTextClassName ?? ""}`}
               style={{ color: mainBarColor }}
             >
               {processingAudioText}
@@ -461,12 +458,8 @@ const VoiceVisualizer = forwardRef<HTMLAudioElement | null, VoiceVisualizerProps
             !isMobile &&
             isProgressIndicatorOnHoverShown && (
               <div
-                className={`voice-visualizer__progress-indicator-hovered ${
-                  progressIndicatorOnHoverClassName ?? ""
-                }`}
-                style={{
-                  left: hoveredOffsetX,
-                }}
+                className={`voice-visualizer__progress-indicator-hovered ${progressIndicatorOnHoverClassName ?? ""}`}
+                style={{ left: hoveredOffsetX }}
               >
                 {isProgressIndicatorTimeOnHoverShown && (
                   <p
@@ -476,9 +469,7 @@ const VoiceVisualizer = forwardRef<HTMLAudioElement | null, VoiceVisualizerProps
                         : ""
                     } ${progressIndicatorTimeOnHoverClassName ?? ""}`}
                   >
-                    {formatRecordedAudioTime(
-                      (duration / canvasCurrentWidth) * hoveredOffsetX,
-                    )}
+                    {formatRecordedAudioTime((duration / canvasCurrentWidth) * hoveredOffsetX)}
                   </p>
                 )}
               </div>
@@ -488,9 +479,7 @@ const VoiceVisualizer = forwardRef<HTMLAudioElement | null, VoiceVisualizerProps
           !isProcessingRecordedAudio &&
           duration ? (
             <div
-              className={`voice-visualizer__progress-indicator ${
-                progressIndicatorClassName ?? ""
-              }`}
+              className={`voice-visualizer__progress-indicator ${progressIndicatorClassName ?? ""}`}
               style={{
                 left:
                   timeIndicatorStyleLeft < canvasCurrentWidth - 1
@@ -501,9 +490,7 @@ const VoiceVisualizer = forwardRef<HTMLAudioElement | null, VoiceVisualizerProps
               {isProgressIndicatorTimeShown && (
                 <p
                   className={`voice-visualizer__progress-indicator-time ${
-                    canvasCurrentWidth -
-                      (currentAudioTime * canvasCurrentWidth) / duration <
-                    70
+                    canvasCurrentWidth - (currentAudioTime * canvasCurrentWidth) / duration < 70
                       ? "voice-visualizer__progress-indicator-time-left"
                       : ""
                   } ${progressIndicatorTimeClassName ?? ""}`}
@@ -519,13 +506,9 @@ const VoiceVisualizer = forwardRef<HTMLAudioElement | null, VoiceVisualizerProps
           <>
             <div className="voice-visualizer__audio-info-container">
               {isRecordingInProgress && (
-                <p className="voice-visualizer__audio-info-time">
-                  {formattedRecordingTime}
-                </p>
+                <p className="voice-visualizer__audio-info-time">{formattedRecordingTime}</p>
               )}
-              {duration && !isProcessingRecordedAudio ? (
-                <p>{formattedDuration}</p>
-              ) : null}
+              {duration && !isProcessingRecordedAudio ? <p>{formattedDuration}</p> : null}
             </div>
 
             <div className="voice-visualizer__buttons-container">
@@ -534,9 +517,7 @@ const VoiceVisualizer = forwardRef<HTMLAudioElement | null, VoiceVisualizerProps
                   <button
                     type="button"
                     className={`voice-visualizer__btn-left ${
-                      isPausedRecording
-                        ? "voice-visualizer__btn-left-microphone"
-                        : ""
+                      isPausedRecording ? "voice-visualizer__btn-left-microphone" : ""
                     }`}
                     onClick={togglePauseResume}
                   >
@@ -576,9 +557,9 @@ const VoiceVisualizer = forwardRef<HTMLAudioElement | null, VoiceVisualizerProps
                   disabled={isProcessingStartRecording}
                 >
                   {isProcessingStartRecording && (
-                  <div className="voice-visualizer__spinner-wrapper">
-                    <div className="voice-visualizer__spinner"/>
-                  </div>
+                    <div className="voice-visualizer__spinner-wrapper">
+                      <div className="voice-visualizer__spinner" />
+                    </div>
                   )}
                   <img src={microphoneIcon} alt="Microphone" />
                 </button>
@@ -586,9 +567,7 @@ const VoiceVisualizer = forwardRef<HTMLAudioElement | null, VoiceVisualizerProps
               <button
                 type="button"
                 className={`voice-visualizer__btn-center voice-visualizer__btn-center-pause ${
-                  !isRecordingInProgress
-                    ? "voice-visualizer__visually-hidden"
-                    : ""
+                  !isRecordingInProgress ? "voice-visualizer__visually-hidden" : ""
                 }`}
                 onClick={stopRecording}
               >
