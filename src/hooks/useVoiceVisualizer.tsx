@@ -39,6 +39,7 @@ function useVoiceVisualizer({
   const [currentAudioTime, setCurrentAudioTime] = useState(0);
   const [isCleared, setIsCleared] = useState(true);
   const [isProcessingOnResize, _setIsProcessingOnResize] = useState(false);
+  const [isPreloadedBlob, setIsPreloadedBlob] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [isProcessingStartRecording, setIsProcessingStartRecording] =
     useState(false);
@@ -113,7 +114,6 @@ function useVoiceVisualizer({
       if (blob.size === 0) {
         throw new Error("Error: The audio blob is empty");
       }
-
       const audioSrcFromBlob = URL.createObjectURL(blob);
       setAudioSrc(audioSrcFromBlob);
 
@@ -131,6 +131,21 @@ function useVoiceVisualizer({
           ? error
           : new Error("Error processing the audio blob"),
       );
+    }
+  };
+
+  const setPreloadedAudioBlob = (blob: Blob) => {
+    if (blob instanceof Blob) {
+      clearCanvas();
+      setIsPreloadedBlob(true);
+      setIsCleared(false);
+      _setIsProcessingAudioOnComplete(true);
+      setIsRecordingInProgress(false);
+      setRecordingTime(0);
+      setIsPausedRecording(false);
+      audioRef.current = new Audio();
+      setRecordedBlob(blob);
+      void processBlob(blob);
     }
   };
 
@@ -262,6 +277,7 @@ function useVoiceVisualizer({
     setAudioStream(null);
     setIsProcessingStartRecording(false);
     setIsRecordingInProgress(false);
+    setIsPreloadedBlob(false);
     _setIsProcessingAudioOnComplete(false);
     setRecordedBlob(null);
     setBufferFromRecordedBlob(null);
@@ -394,6 +410,8 @@ function useVoiceVisualizer({
     error,
     isProcessingOnResize,
     isProcessingStartRecording,
+    isPreloadedBlob,
+    setPreloadedAudioBlob,
     _setIsProcessingAudioOnComplete,
     _setIsProcessingOnResize,
   };
