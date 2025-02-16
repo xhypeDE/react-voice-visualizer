@@ -220,8 +220,8 @@ function useVoiceVisualizer({
     audioStream?.getTracks().forEach((track) => track.stop());
     if (rafRecordingRef.current) cancelAnimationFrame(rafRecordingRef.current);
     if (sourceRef.current) sourceRef.current.disconnect();
-    if (audioContextRef.current && audioContextRef.current.state !== "closed") {
-      void audioContextRef.current.close();
+    if (audioContextRef.current && audioContextRef.current.state === "suspended") {
+      void audioContextRef.current.resume();
     }
     _setIsProcessingAudioOnComplete(true);
     setRecordingTime(0);
