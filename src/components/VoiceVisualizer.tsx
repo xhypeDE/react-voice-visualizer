@@ -1,10 +1,11 @@
-import {
+import React, {
   useState,
   useEffect,
   useLayoutEffect,
   forwardRef,
   useRef,
   MutableRefObject,
+  MouseEvent,
   MouseEventHandler,
 } from "react";
 
@@ -72,9 +73,7 @@ interface VoiceVisualizerProps {
   downloadAudioText?: string;
 }
 
-type Ref = HTMLAudioElement | null;
-
-const VoiceVisualizer = forwardRef<Ref, VoiceVisualizerProps>(
+const VoiceVisualizer = forwardRef<HTMLAudioElement | null, VoiceVisualizerProps>(
   (
     {
       controls: {
@@ -103,6 +102,7 @@ const VoiceVisualizer = forwardRef<Ref, VoiceVisualizerProps>(
         isProcessingOnResize,
         _setIsProcessingOnResize,
         _setIsProcessingAudioOnComplete,
+        audioRef: controlsAudioRef, // upstream now expects audioRef in controls
       },
       width = "100%",
       height = 200,
@@ -136,16 +136,18 @@ const VoiceVisualizer = forwardRef<Ref, VoiceVisualizerProps>(
       controlButtonsClassName,
       clearButtonText = "Clear",
       processingAudioText = "Processing Audio...",
-      downloadAudioText = "Download Audio"
+      downloadAudioText = "Download Audio",
     },
     ref,
   ) => {
+    // Use the forwarded ref if provided, otherwise fall back to the audioRef passed in controls.
+    const audioElementRef = (ref as MutableRefObject<HTMLAudioElement | null>) || controlsAudioRef;
+
     const [hoveredOffsetX, setHoveredOffsetX] = useState(0);
     const [canvasCurrentWidth, setCanvasCurrentWidth] = useState(0);
     const [canvasCurrentHeight, setCanvasCurrentHeight] = useState(0);
     const [canvasWidth, setCanvasWidth] = useState(0);
-    const [isRecordedCanvasHovered, setIsRecordedCanvasHovered] =
-      useState(false);
+    const [isRecordedCanvasHovered, setIsRecordedCanvasHovered] = useState(false);
     const [screenWidth, setScreenWidth] = useState(window.innerWidth);
     const [isResizing, setIsResizing] = useState(false);
 
@@ -164,15 +166,7 @@ const VoiceVisualizer = forwardRef<Ref, VoiceVisualizerProps>(
     const index2Ref = useRef(formattedBarWidth);
     const canvasContainerRef = useRef<HTMLDivElement | null>(null);
 
-    const audioRef = ref as MutableRefObject<HTMLAudioElement>;
-
-    const currentScreenWidth = useLatest(screenWidth);
-
-    const {
-      result: barsData,
-      setResult: setBarsData,
-      run,
-    } = useWebWorker<BarsData[], GetBarsDataParams>({
+    const { result: barsData, setResult: setBarsData, run } = useWebWorker<BarsData[], GetBarsDataParams>({
       fn: getBarsData,
       initialValue: [],
       onMessageReceived: completedAudioProcessing,
@@ -180,38 +174,59 @@ const VoiceVisualizer = forwardRef<Ref, VoiceVisualizerProps>(
 
     const debouncedOnResize = useDebounce(onResize);
 
+    // Detect Safari (which sometimes has issues with ResizeObserver)
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+    // Merged resize handling: use ResizeObserver if available and not Safari,
+    // otherwise fall back to the window "resize" event with multiple setTimeout calls.
     useEffect(() => {
-      onResize();
-
-      setTimeout(onResize, 100);
-      setTimeout(onResize, 500);
-      setTimeout(onResize, 1000);
-
-      const handleResize = () => {
-        if (currentScreenWidth.current === window.innerWidth) return;
-
-        if (isAvailableRecordedAudio) {
+      if (isSafari) {
+        const handleResize = () => {
           setScreenWidth(window.innerWidth);
           _setIsProcessingOnResize(true);
           setIsResizing(true);
           debouncedOnResize();
-        } else {
+        };
+        window.addEventListener("resize", handleResize);
+        onResize();
+        setTimeout(onResize, 100);
+        setTimeout(onResize, 500);
+        setTimeout(onResize, 1000);
+        return () => {
+          window.removeEventListener("resize", handleResize);
+        };
+      } else if (typeof ResizeObserver !== "undefined" && canvasContainerRef.current) {
+        const observer = new ResizeObserver(() => {
           setScreenWidth(window.innerWidth);
-          onResize();
-        }
-      };
-
-      window.addEventListener("resize", handleResize);
-
-      return () => {
-        window.removeEventListener("resize", handleResize);
-      };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+          if (isAvailableRecordedAudio) {
+            _setIsProcessingOnResize(true);
+            setIsResizing(true);
+            debouncedOnResize();
+          } else {
+            onResize();
+          }
+        });
+        observer.observe(canvasContainerRef.current);
+        return () => observer.disconnect();
+      } else {
+        const handleResize = () => {
+          setScreenWidth(window.innerWidth);
+          if (isAvailableRecordedAudio) {
+            _setIsProcessingOnResize(true);
+            setIsResizing(true);
+            debouncedOnResize();
+          } else {
+            onResize();
+          }
+        };
+        window.addEventListener("resize", handleResize);
+        onResize();
+        return () => window.removeEventListener("resize", handleResize);
+      }
     }, [width, isAvailableRecordedAudio]);
 
     useLayoutEffect(() => {
       if (!canvasRef.current) return;
-
       if (indexSpeedRef.current >= formattedSpeed || !audioData.length) {
         indexSpeedRef.current = audioData.length ? 0 : formattedSpeed;
         drawByLiveStream({
@@ -222,7 +237,7 @@ const VoiceVisualizer = forwardRef<Ref, VoiceVisualizerProps>(
           canvas: canvasRef.current,
           picks: picksRef.current,
           isRecordingInProgress,
-          isPausedRecording: isPausedRecording,
+          isPausedRecording,
           backgroundColor,
           mainBarColor,
           secondaryBarColor,
@@ -232,9 +247,7 @@ const VoiceVisualizer = forwardRef<Ref, VoiceVisualizerProps>(
           fullscreen,
         });
       }
-
       indexSpeedRef.current += 1;
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
       canvasRef.current,
       audioData,
@@ -250,25 +263,16 @@ const VoiceVisualizer = forwardRef<Ref, VoiceVisualizerProps>(
 
     useEffect(() => {
       if (!isAvailableRecordedAudio) return;
-
       if (isRecordedCanvasHovered) {
         canvasRef.current?.addEventListener("mouseleave", hideTimeIndicator);
       } else {
         canvasRef.current?.addEventListener("mouseenter", showTimeIndicator);
       }
-
       return () => {
         if (isRecordedCanvasHovered) {
-          canvasRef.current?.removeEventListener(
-            "mouseleave",
-            hideTimeIndicator,
-          );
+          canvasRef.current?.removeEventListener("mouseleave", hideTimeIndicator);
         } else {
-          // eslint-disable-next-line react-hooks/exhaustive-deps
-          canvasRef.current?.removeEventListener(
-            "mouseenter",
-            showTimeIndicator,
-          );
+          canvasRef.current?.removeEventListener("mouseenter", showTimeIndicator);
         }
       };
     }, [isRecordedCanvasHovered, isAvailableRecordedAudio]);
@@ -299,27 +303,12 @@ const VoiceVisualizer = forwardRef<Ref, VoiceVisualizerProps>(
         gap: formattedGap,
       });
 
-      canvasRef.current?.addEventListener(
-        "mousemove",
-        setCurrentHoveredOffsetX,
-      );
+      canvasRef.current?.addEventListener("mousemove", setCurrentHoveredOffsetX);
 
       return () => {
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        canvasRef.current?.removeEventListener(
-          "mousemove",
-          setCurrentHoveredOffsetX,
-        );
+        canvasRef.current?.removeEventListener("mousemove", setCurrentHoveredOffsetX);
       };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [
-      bufferFromRecordedBlob,
-      canvasCurrentWidth,
-      canvasCurrentHeight,
-      gap,
-      barWidth,
-      isResizing,
-    ]);
+    }, [bufferFromRecordedBlob, canvasCurrentWidth, canvasCurrentHeight, gap, barWidth, isResizing]);
 
     useEffect(() => {
       if (
@@ -347,7 +336,6 @@ const VoiceVisualizer = forwardRef<Ref, VoiceVisualizerProps>(
         rounded,
         duration,
       });
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
       barsData,
       currentAudioTime,
@@ -365,7 +353,6 @@ const VoiceVisualizer = forwardRef<Ref, VoiceVisualizerProps>(
           backgroundColor,
         });
       }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isProcessingRecordedAudio]);
 
     function onResize() {
@@ -375,8 +362,7 @@ const VoiceVisualizer = forwardRef<Ref, VoiceVisualizerProps>(
 
       const roundedHeight =
         Math.trunc(
-          (canvasContainerRef.current.clientHeight * window.devicePixelRatio) /
-            2,
+          (canvasContainerRef.current.clientHeight * window.devicePixelRatio) / 2,
         ) * 2;
 
       setCanvasCurrentWidth(canvasContainerRef.current.clientWidth);
@@ -393,8 +379,8 @@ const VoiceVisualizer = forwardRef<Ref, VoiceVisualizerProps>(
     function completedAudioProcessing() {
       _setIsProcessingOnResize(false);
       _setIsProcessingAudioOnComplete(false);
-      if (audioRef?.current && !isProcessingOnResize) {
-        audioRef.current.src = audioSrc;
+      if (audioElementRef?.current && !isProcessingOnResize) {
+        audioElementRef.current.src = audioSrc;
       }
     }
 
@@ -410,28 +396,23 @@ const VoiceVisualizer = forwardRef<Ref, VoiceVisualizerProps>(
       setHoveredOffsetX(e.offsetX);
     };
 
-    const handleRecordedAudioCurrentTime: MouseEventHandler<
-      HTMLCanvasElement
-    > = (e) => {
-      if (audioRef?.current && canvasRef.current) {
+    const handleRecordedAudioCurrentTime: MouseEventHandler<HTMLCanvasElement> = (e) => {
+      if (audioElementRef?.current && canvasRef.current) {
         const newCurrentTime =
           (duration / canvasCurrentWidth) *
           (e.clientX - canvasRef.current.getBoundingClientRect().left);
 
-        audioRef.current.currentTime = newCurrentTime;
+        audioElementRef.current.currentTime = newCurrentTime;
         setCurrentAudioTime(newCurrentTime);
       }
     };
 
-    const timeIndicatorStyleLeft =
-      (currentAudioTime / duration) * canvasCurrentWidth;
+    const timeIndicatorStyleLeft = (currentAudioTime / duration) * canvasCurrentWidth;
 
     return (
       <div className={`voice-visualizer ${mainContainerClassName ?? ""}`}>
         <div
-          className={`voice-visualizer__canvas-container ${
-            canvasContainerClassName ?? ""
-          }`}
+          className={`voice-visualizer__canvas-container ${canvasContainerClassName ?? ""}`}
           ref={canvasContainerRef}
           style={{ width: formatToInlineStyleValue(width) }}
         >
@@ -489,13 +470,11 @@ const VoiceVisualizer = forwardRef<Ref, VoiceVisualizerProps>(
               >
                 {isProgressIndicatorTimeOnHoverShown && (
                   <p
-                    className={`voice-visualizer__progress-indicator-hovered-time 
-                    ${
+                    className={`voice-visualizer__progress-indicator-hovered-time ${
                       canvasCurrentWidth - hoveredOffsetX < 70
                         ? "voice-visualizer__progress-indicator-hovered-time-left"
                         : ""
-                    } 
-                    ${progressIndicatorTimeOnHoverClassName ?? ""}`}
+                    } ${progressIndicatorTimeOnHoverClassName ?? ""}`}
                   >
                     {formatRecordedAudioTime(
                       (duration / canvasCurrentWidth) * hoveredOffsetX,
@@ -597,9 +576,9 @@ const VoiceVisualizer = forwardRef<Ref, VoiceVisualizerProps>(
                   disabled={isProcessingStartRecording}
                 >
                   {isProcessingStartRecording && (
-                    <div className="spinner__wrapper">
-                      <div className="spinner" />
-                    </div>
+                  <div className="voice-visualizer__spinner-wrapper">
+                    <div className="voice-visualizer__spinner"/>
+                  </div>
                   )}
                   <img src={microphoneIcon} alt="Microphone" />
                 </button>
@@ -619,9 +598,7 @@ const VoiceVisualizer = forwardRef<Ref, VoiceVisualizerProps>(
                 <button
                   type="button"
                   onClick={clearCanvas}
-                  className={`voice-visualizer__btn ${
-                    controlButtonsClassName ?? ""
-                  }`}
+                  className={`voice-visualizer__btn ${controlButtonsClassName ?? ""}`}
                   disabled={isProcessingRecordedAudio}
                 >
                   {clearButtonText}
@@ -631,9 +608,7 @@ const VoiceVisualizer = forwardRef<Ref, VoiceVisualizerProps>(
                 <button
                   type="button"
                   onClick={saveAudioFile}
-                  className={`voice-visualizer__btn ${
-                    controlButtonsClassName ?? ""
-                  }`}
+                  className={`voice-visualizer__btn ${controlButtonsClassName ?? ""}`}
                   disabled={isProcessingRecordedAudio}
                 >
                   {downloadAudioText}
